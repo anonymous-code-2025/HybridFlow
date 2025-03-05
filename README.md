@@ -16,7 +16,7 @@ HybridFlow, an effective method to CSM.
 
 "HybridFlow: An effective Method for
 Accelerating Continuous Subgraph Matching"
-by Zhan Gao, Xue Liu, , .
+by Zhan Gao, Xue Liu, Jianing Zhang, Qingxu Deng.
 If you have any further questions, please feel free to contact us.
 
 ## Compile
