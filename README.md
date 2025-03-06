@@ -12,12 +12,7 @@ rigid matching order of always starting from 𝑒 can lead to a massive
 number of partial results that will turn out futile. Also, if 𝑄 contains
 automorphisms, there will be a lot of redundant computation in
 the matching process. To address these two problems, we propose
-HybridFlow, an effective method to CSM.
-
-"HybridFlow: An effective Method for
-Accelerating Continuous Subgraph Matching"
-by Zhan Gao, Xue Liu, Jianing Zhang, Qingxu Deng.
-If you have any further questions, please feel free to contact us.
+HybridFlow, an effective method to CSM. This code is written based on the IVM framework.
 
 ## Compile
 
@@ -28,6 +23,17 @@ mkdir build
 cd build
 cmake ..
 make
+```
+
+## Test
+
+Execute the following commands to test the correctness of the binary file. The script will
+execute 100 test cases on insert streams, respectively. The test data is stored
+in the insert folders.  As we have tested the correctness of the binary, execute the command unless you modified the source code.
+
+```zsh
+cd test
+python test.py
 ```
 
 ## Execute
