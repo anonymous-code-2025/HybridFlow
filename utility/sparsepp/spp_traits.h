@@ -3,14 +3,11 @@
 
 #include "spp_config.h"
 
-template<int S, int H> class HashObject; // for Google's benchmark, not in spp namespace!
+template<int S, int H> class HashObject; 
 
 namespace spp_
 {
 
-// ---------------------------------------------------------------------------
-//                       type_traits we need
-// ---------------------------------------------------------------------------
 template<class T, T v>
 struct integral_constant { static const T value = v; };
 
@@ -83,11 +80,6 @@ template<typename T> struct is_reference     : false_type {};
 template<typename T> struct is_reference<T&> : true_type {};
 
 //  ---------------- is_relocatable ----------------------------------------
-// relocatable values can be moved around in memory using memcpy and remain
-// correct. Most types are relocatable, an example of a type who is not would
-// be a struct which contains a pointer to a buffer inside itself - this is the
-// case for std::string in gcc 5.
-// ------------------------------------------------------------------------
 template <class T> struct is_relocatable;
 template <class T> struct is_relocatable :
      integral_constant<bool, (is_integral<T>::value ||
@@ -106,7 +98,6 @@ template <class T, class U> struct is_relocatable<std::pair<T, U> > :
      integral_constant<bool, (is_relocatable<T>::value && is_relocatable<U>::value)>
 { };
 
-// A template helper used to select A or B based on a condition.
 // ------------------------------------------------------------
 template<bool cond, typename A, typename B>
 struct if_
@@ -120,6 +111,6 @@ struct if_<false, A, B>
     typedef B type;
 };
 
-}  // spp_ namespace
+}  
 
-#endif // spp_traits_h_guard
+#endif 

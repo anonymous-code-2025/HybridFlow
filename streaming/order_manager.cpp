@@ -60,7 +60,7 @@ void OrderManager::detect_automorphism_edges(const Graph *query_graph) {
 
     uint32_t n = query_graph->getVerticesCount();
     spp::sparse_hash_set<Edge> selected;// 存储已经选择的边
-    // test by gz
+    
     // printf("\n starting test automorphisms\n");
     /*printf("\n************\n");
     for(auto embedding: automorphisms_)
@@ -187,7 +187,7 @@ void OrderManager::create_indexing_order_for_reduced_graph(const Graph *query_gr
     generate_function(adjacent_to_both);
     generate_function(adjacent_to_one);
     generate_function(adjacent_to_none);
-    // tested by gz
+    
 
 }
 // 为什么要设置强连通分量，因为在为一条边创建匹配顺序时，是不需要考虑这连个点的，这条边可能会把整个查询图划分为 好几个连通分量

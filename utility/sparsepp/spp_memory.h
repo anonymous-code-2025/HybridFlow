@@ -187,4 +187,4 @@ namespace spp
 
 }
 
-#endif // spp_memory_h_guard
+#endif 

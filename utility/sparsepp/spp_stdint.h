@@ -13,4 +13,4 @@
     #endif
 #endif
 
-#endif // spp_stdint_h_guard
+#endif

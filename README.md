@@ -71,5 +71,5 @@ time of enumerating the incremental results. If you want to measure the three me
 
 ## Experiment Datasets and Baseline Methods in our Experiments
 
-The datasets and baseline methods in our experiments can be found in this [repository](https://github.com/nonymous-code-2025/HybridFlow),
+The datasets and baseline methods in our experiments can be found in this [repository],
 which is an in-depth study of existing continuous subgraph matching methods by our research team.

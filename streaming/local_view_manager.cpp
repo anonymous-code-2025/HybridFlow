@@ -312,7 +312,7 @@ void LocalViewManager::optimized_build_local_view(const Graph *query_graph, Orde
                 // Set the flag array.
                 if (updated_count_ == 0) { // 如果还没有更新的候选点
                     for (uint32_t k = 0; k < candidates_store_[u].size(); ++k) {
-                        // modified by gz********************************************************************
+                        
                         flag_array_[candidates_store_[u][k]] = k + 1;
                         // flag_array_[candidates_store_[u][k]] = candidates_store_[u][k] + 1;
                         updated_flag_[updated_count_++] = candidates_store_[u][k];
@@ -383,7 +383,7 @@ void LocalViewManager::optimized_build_local_view(const Graph *query_graph, Orde
                     //}
                     // 
                     // printf("LocalView[%u]信息",local_view_id);
-                    // modified by gz*******************************************************************
+                    
                     lv.trie_.emplace_back(begin_pos, buffer_pool_.size());
                     lv.cardinality_ += buffer_pool_.size() - begin_pos;
                 }

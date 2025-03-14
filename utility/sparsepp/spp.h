@@ -4,10 +4,6 @@
 
 
 
-// some macros for portability
-// ---------------------------
-// includes
-// --------
 #include <cassert>
 #include <cstring>
 #include <string>
@@ -51,9 +47,7 @@
 
 namespace spp_ {
 
-//  ----------------------------------------------------------------------
-//                  U T I L    F U N C T I O N S
-//  ----------------------------------------------------------------------
+
 template <class E>
 inline void throw_exception(const E& exception)
 {
@@ -65,10 +59,6 @@ inline void throw_exception(const E& exception)
 #endif
 }
 
-//  ----------------------------------------------------------------------
-//              M U T A B L E     P A I R      H A C K
-// turn std::pair<const K, V> into mutable std::pair<K, V>
-//  ----------------------------------------------------------------------
 template <class T>
 struct cvt
 {
@@ -87,19 +77,12 @@ struct cvt<const std::pair<const K, V> >
     typedef const std::pair<K, V> type;
 };
 
-//  ----------------------------------------------------------------------
-//              M O V E   I T E R A T O R
-//  ----------------------------------------------------------------------
 #ifdef SPP_NO_CXX11_RVALUE_REFERENCES
     #define MK_MOVE_IT(p) (p)
 #else
     #define MK_MOVE_IT(p) std::make_move_iterator(p)
 #endif
 
-
-//  ----------------------------------------------------------------------
-//             I N T E R N A L    S T U F F
-//  ----------------------------------------------------------------------
 #ifdef SPP_NO_CXX11_STATIC_ASSERT
     template <bool> struct SppCompileAssert { };
     #define SPP_COMPILE_ASSERT(expr, msg) \
@@ -111,33 +94,6 @@ struct cvt<const std::pair<const K, V> >
 namespace sparsehash_internal
 {
 
-// Adaptor methods for reading/writing data from an INPUT or OUPTUT
-// variable passed to serialize() or unserialize().  For now we
-// have implemented INPUT/OUTPUT for FILE*, istream*/ostream* (note
-// they are pointers, unlike typical use), or else a pointer to
-// something that supports a Read()/Write() method.
-//
-// For technical reasons, we implement read_data/write_data in two
-// stages.  The actual work is done in *_data_internal, which takes
-// the stream argument twice: once as a template type, and once with
-// normal type information.  (We only use the second version.)  We do
-// this because of how C++ picks what function overload to use.  If we
-// implemented this the naive way:
-//    bool read_data(istream* is, const void* data, size_t length);
-//    template<typename T> read_data(T* fp,  const void* data, size_t length);
-// C++ would prefer the second version for every stream type except
-// istream.  However, we want C++ to prefer the first version for
-// streams that are *subclasses* of istream, such as istringstream.
-// This is not possible given the way template types are resolved.  So
-// we split the stream argument in two, one of which is templated and
-// one of which is not.  The specialized functions (like the istream
-// version above) ignore the template arg and use the second, 'type'
-// arg, getting subclass matching as normal.  The 'catch-all'
-// functions (the second version above) use the template arg to deduce
-// the type, and use a second, void* arg to achieve the desired
-// 'catch-all' semantics.
-
-    // ----- low-level I/O for FILE* ----
 
     template<typename Ignored>
     inline bool read_data_internal(Ignored* /*unused*/, FILE* fp,
@@ -153,12 +109,6 @@ namespace sparsehash_internal
         return fwrite(data, length, 1, fp) == 1;
     }
 
-    // ----- low-level I/O for iostream ----
-
-    // We want the caller to be responsible for #including <iostream>, not
-    // us, because iostream is a big header!  According to the standard,
-    // it's only legal to delay the instantiation the way we want to if
-    // the istream/ostream is a template type.  So we jump through hoops.
     template<typename ISTREAM>
     inline bool read_data_internal_for_istream(ISTREAM* fp,
                                                void* data, size_t length)
@@ -187,10 +137,6 @@ namespace sparsehash_internal
         return write_data_internal_for_ostream(fp, data, length);
     }
 
-    // ----- low-level I/O for custom streams ----
-
-    // The INPUT type needs to support a Read() method that takes a
-    // buffer and a length and returns the number of bytes read.
     template <typename INPUT>
     inline bool read_data_internal(INPUT* fp, void* /*unused*/,
                                    void* data, size_t length)
@@ -198,16 +144,12 @@ namespace sparsehash_internal
         return static_cast<size_t>(fp->Read(data, length)) == length;
     }
 
-    // The OUTPUT type needs to support a Write() operation that takes
-    // a buffer and a length and returns the number of bytes written.
     template <typename OUTPUT>
     inline bool write_data_internal(OUTPUT* fp, void* /*unused*/,
                                     const void* data, size_t length)
     {
         return static_cast<size_t>(fp->Write(data, length)) == length;
     }
-
-    // ----- low-level I/O: the public API ----
 
     template <typename INPUT>
     inline bool read_data(INPUT* fp, void* data, size_t length)
@@ -221,18 +163,12 @@ namespace sparsehash_internal
         return write_data_internal(fp, fp, data, length);
     }
 
-    // Uses read_data() and write_data() to read/write an integer.
-    // length is the number of bytes to read/write (which may differ
-    // from sizeof(IntType), allowing us to save on a 32-bit system
-    // and load on a 64-bit system).  Excess bytes are taken to be 0.
-    // INPUT and OUTPUT must match legal inputs to read/write_data (above).
-    // --------------------------------------------------------------------
+
     template <typename INPUT, typename IntType>
     bool read_bigendian_number(INPUT* fp, IntType* value, size_t length)
     {
         *value = 0;
         unsigned char byte;
-        // We require IntType to be unsigned or else the shifting gets all screwy.
         SPP_COMPILE_ASSERT(static_cast<IntType>(-1) > static_cast<IntType>(0), "serializing_int_requires_an_unsigned_type");
         for (size_t i = 0; i < length; ++i)
         {
@@ -247,7 +183,6 @@ namespace sparsehash_internal
     bool write_bigendian_number(OUTPUT* fp, IntType value, size_t length)
     {
         unsigned char byte;
-        // We require IntType to be unsigned or else the shifting gets all screwy.
         SPP_COMPILE_ASSERT(static_cast<IntType>(-1) > static_cast<IntType>(0), "serializing_int_requires_an_unsigned_type");
         for (size_t i = 0; i < length; ++i)
         {
@@ -258,12 +193,6 @@ namespace sparsehash_internal
         return true;
     }
 
-    // If your keys and values are simple enough, you can pass this
-    // serializer to serialize()/unserialize().  "Simple enough" means
-    // value_type is a POD type that contains no pointers.  Note,
-    // however, we don't try to normalize endianness.
-    // This is the type used for NopointerSerializer.
-    // ---------------------------------------------------------------
     template <typename value_type> struct pod_serializer
     {
         template <typename INPUT>
@@ -279,13 +208,6 @@ namespace sparsehash_internal
         }
     };
 
-
-    // Settings contains parameters for growing and shrinking the table.
-    // It also packages zero-size functor (ie. hasher).
-    //
-    // It does some munging of the hash value for the cases where
-    // the original hash function is not be very good.
-    // ---------------------------------------------------------------
     template<typename Key, typename HashFunc, typename SizeType, int HT_MIN_BUCKETS>
     class sh_hashtable_settings : public HashFunc
     {
@@ -305,7 +227,6 @@ namespace sparsehash_internal
         {
             inline T operator()(T h) const
             {
-                // from Thomas Wang - https://gist.github.com/badboy/6267743
                 // ---------------------------------------------------------
                 h = (h ^ 61) ^ (h >> 16);
                 h = h + (h << 3);
@@ -320,7 +241,6 @@ namespace sparsehash_internal
         {
             inline T operator()(T h) const
             {
-                // from Thomas Wang - https://gist.github.com/badboy/6267743
                 // ---------------------------------------------------------
                 h = (~h) + (h << 21);              // h = (h << 21) - h - 1;
                 h = h ^ (h >> 24);
@@ -380,18 +300,13 @@ namespace sparsehash_internal
         unsigned int num_ht_copies() const      { return num_ht_copies_; }
         void inc_num_ht_copies()                { ++num_ht_copies_; }
 
-        // Reset the enlarge and shrink thresholds
         void reset_thresholds(size_type num_buckets)
         {
             set_enlarge_threshold(enlarge_size(num_buckets));
             set_shrink_threshold(shrink_size(num_buckets));
-            // whatever caused us to reset already considered
             set_consider_shrink(false);
         }
 
-        // Caller is resposible for calling reset_threshold right after
-        // set_resizing_parameters.
-        // ------------------------------------------------------------
         void set_resizing_parameters(float shrink, float grow)
         {
             assert(shrink >= 0);
@@ -402,9 +317,6 @@ namespace sparsehash_internal
             set_enlarge_factor(grow);
         }
 
-        // This is the smallest size a hashtable can be without being too crowded
-        // If you like, you can give a min #buckets as well as a min #elts
-        // ----------------------------------------------------------------------
         size_type min_buckets(size_type num_elts, size_type min_buckets_wanted)
         {
             float enlarge = enlarge_factor();
@@ -412,9 +324,6 @@ namespace sparsehash_internal
             while (sz < min_buckets_wanted ||
                    num_elts >= static_cast<size_type>(sz * enlarge))
             {
-                // This just prevents overflowing size_type, since sz can exceed
-                // max_size() here.
-                // -------------------------------------------------------------
                 if (static_cast<size_type>(sz * 2) < sz)
                     throw_exception(std::length_error("resize overflow"));  // protect against overflow
                 sz *= 2;
@@ -429,112 +338,14 @@ namespace sparsehash_internal
         float shrink_factor_;          // how empty before resize
         bool consider_shrink_;         // if we should try to shrink before next insert
 
-        unsigned int num_ht_copies_;   // num_ht_copies is a counter incremented every Copy/Move
+        unsigned int num_ht_copies_;  
     };
 
 }  // namespace sparsehash_internal
 
 #undef SPP_COMPILE_ASSERT
 
-//  ----------------------------------------------------------------------
-//                    S P A R S E T A B L E
-//  ----------------------------------------------------------------------
-//
-// A sparsetable is a random container that implements a sparse array,
-// that is, an array that uses very little memory to store unassigned
-// indices (in this case, between 1-2 bits per unassigned index).  For
-// instance, if you allocate an array of size 5 and assign a[2] = <big
-// struct>, then a[2] will take up a lot of memory but a[0], a[1],
-// a[3], and a[4] will not.  Array elements that have a value are
-// called "assigned".  Array elements that have no value yet, or have
-// had their value cleared using erase() or clear(), are called
-// "unassigned".
-//
-// Unassigned values seem to have the default value of T (see below).
-// Nevertheless, there is a difference between an unassigned index and
-// one explicitly assigned the value of T().  The latter is considered
-// assigned.
-//
-// Access to an array element is constant time, as is insertion and
-// deletion.  Insertion and deletion may be fairly slow, however:
-// because of this container's memory economy, each insert and delete
-// causes a memory reallocation.
-//
-// NOTE: You should not test(), get(), or set() any index that is
-// greater than sparsetable.size().  If you need to do that, call
-// resize() first.
-//
-// --- Template parameters
-// PARAMETER   DESCRIPTION                           DEFAULT
-// T           The value of the array: the type of   --
-//             object that is stored in the array.
-//
-// Alloc:      Allocator to use to allocate memory.
-//
-// --- Model of
-// Random Access Container
-//
-// --- Type requirements
-// T must be Copy Constructible. It need not be Assignable.
-//
-// --- Public base classes
-// None.
-//
-// --- Members
-//
-// [*] All iterators are const in a sparsetable (though nonempty_iterators
-//     may not be).  Use get() and set() to assign values, not iterators.
-//
-// [+] iterators are random-access iterators.  nonempty_iterators are
-//     bidirectional iterators.
 
-// [*] If you shrink a sparsetable using resize(), assigned elements
-// past the end of the table are removed using erase().  If you grow
-// a sparsetable, new unassigned indices are created.
-//
-// [+] Note that operator[] returns a const reference.  You must use
-// set() to change the value of a table element.
-//
-// [!] Unassignment also calls the destructor.
-//
-// Iterators are invalidated whenever an item is inserted or
-// deleted (ie set() or erase() is used) or when the size of
-// the table changes (ie resize() or clear() is used).
-
-
-
-// ---------------------------------------------------------------------------
-// Our iterator as simple as iterators can be: basically it's just
-// the index into our table.  Dereference, the only complicated
-// thing, we punt to the table class.  This just goes to show how
-// much machinery STL requires to do even the most trivial tasks.
-//
-// A NOTE ON ASSIGNING:
-// A sparse table does not actually allocate memory for entries
-// that are not filled.  Because of this, it becomes complicated
-// to have a non-const iterator: we don't know, if the iterator points
-// to a not-filled bucket, whether you plan to fill it with something
-// or whether you plan to read its value (in which case you'll get
-// the default bucket value).  Therefore, while we can define const
-// operations in a pretty 'normal' way, for non-const operations, we
-// define something that returns a helper object with operator= and
-// operator& that allocate a bucket lazily.  We use this for table[]
-// and also for regular table iterators.
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Our iterator as simple as iterators can be: basically it's just
-// the index into our table.  Dereference, the only complicated
-// thing, we punt to the table class.  This just goes to show how
-// much machinery STL requires to do even the most trivial tasks.
-//
-// By templatizing over tabletype, we have one iterator type which
-// we can use for both sparsetables and sparsebins.  In fact it
-// works on any class that allows size() and operator[] (eg vector),
-// as long as it does the standard STL typedefs too (eg value_type).
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 template <class tabletype>
 class table_iterator
 {
@@ -550,15 +361,12 @@ public:
         table(tbl), pos(p)
     { }
 
-    // Helper function to assert things are ok; eg pos is still in range
     void check() const
     {
         assert(table);
         assert(pos <= table->size());
     }
 
-    // Arithmetic: we just do arithmetic on pos.  We don't even need to
-    // do bounds checking, since STL doesn't consider that its job.  :-)
     iterator& operator+=(size_type t) { pos += t; check(); return *this; }
     iterator& operator-=(size_type t) { pos -= t; check(); return *this; }
     iterator& operator++()            { ++pos; check(); return *this; }
@@ -611,7 +419,6 @@ public:
     bool operator>(const iterator& it) const { return it < *this; }
     bool operator>=(const iterator& it) const { return !(*this < it); }
 
-    // Here's the info we actually need to be an iterator
     tabletype *table;              // so we can dereference and bounds-check
     size_type pos;                 // index into the table
 };
@@ -632,23 +439,14 @@ public:
     typedef typename tabletype::const_reference reference;  // we're const-only
     typedef typename tabletype::const_pointer pointer;
 
-    // The "real" constructor
     const_table_iterator(const tabletype *tbl, size_type p)
         : table(tbl), pos(p) { }
 
-    // The default constructor, used when I define vars of type table::iterator
     const_table_iterator() : table(NULL), pos(0) { }
 
-    // The copy constructor, for when I say table::iterator foo = tbl.begin()
-    // Also converts normal iterators to const iterators // not explicit on purpose
     const_table_iterator(const iterator &from)
         : table(from.table), pos(from.pos) { }
 
-    // The default destructor is fine; we don't define one
-    // The default operator= is fine; we don't define one
-
-    // The main thing our iterator does is dereference.  If the table entry
-    // we point to is empty, we return the default value type.
     reference operator*() const       { return (*table)[pos]; }
     pointer operator->() const        { return &(operator*()); }
 
@@ -659,8 +457,6 @@ public:
         assert(pos <= table->size());
     }
 
-    // Arithmetic: we just do arithmetic on pos.  We don't even need to
-    // do bounds checking, since STL doesn't consider that its job.  :-)
     const_iterator& operator+=(size_type t) { pos += t; check(); return *this; }
     const_iterator& operator-=(size_type t) { pos -= t; check(); return *this; }
     const_iterator& operator++()            { ++pos; check(); return *this; }
@@ -716,32 +512,12 @@ public:
     bool operator>(const const_iterator& it) const { return it < *this; }
     bool operator>=(const const_iterator& it) const { return !(*this < it); }
 
-    // Here's the info we actually need to be an iterator
+   
     const tabletype *table;        // so we can dereference and bounds-check
     size_type pos;                 // index into the table
 };
 
-// ---------------------------------------------------------------------------
-// This is a 2-D iterator.  You specify a begin and end over a list
-// of *containers*.  We iterate over each container by iterating over
-// it.  It's actually simple:
-// VECTOR.begin() VECTOR[0].begin()  --------> VECTOR[0].end() ---,
-//     |          ________________________________________________/
-//     |          \_> VECTOR[1].begin()  -------->  VECTOR[1].end() -,
-//     |          ___________________________________________________/
-//     v          \_> ......
-// VECTOR.end()
-//
-// It's impossible to do random access on one of these things in constant
-// time, so it's just a bidirectional iterator.
-//
-// Unfortunately, because we need to use this for a non-empty iterator,
-// we use ne_begin() and ne_end() instead of begin() and end()
-// (though only going across, not down).
-// ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 template <class T, class row_it, class col_it, class iter_type>
 class Two_d_iterator
 {
@@ -770,28 +546,18 @@ public:
     // The default constructor
     Two_d_iterator() :  row_current(0), col_current(0) { }
 
-    // Need this explicitly so we can convert normal iterators <=> const iterators
-    // not explicit on purpose
-    // ---------------------------------------------------------------------------
     template <class T2, class row_it2, class col_it2, class iter_type2>
     Two_d_iterator(const Two_d_iterator<T2, row_it2, col_it2, iter_type2>& it) :
         row_current (*(row_it *)&it.row_current),
         col_current (*(col_it *)&it.col_current)
     { }
 
-    // The default destructor is fine; we don't define one
-    // The default operator= is fine; we don't define one
 
     value_type& operator*() const  { return *(col_current); }
     value_type* operator->() const { return &(operator*()); }
 
-    // Arithmetic: we just do arithmetic on pos.  We don't even need to
-    // do bounds checking, since STL doesn't consider that its job.  :-)
-    // NOTE: this is not amortized constant time!  What do we do about it?
-    // ------------------------------------------------------------------
     void advance_past_end()
     {
-        // used when col_current points to end()
         while (col_current == row_current->ne_end())
         {
             // end of current row
@@ -820,7 +586,6 @@ public:
 
     iterator& operator++()
     {
-        // assert(!row_current->is_marked());               // how to ++ from there?
         ++col_current;
         advance_past_end();                              // in case col_current is at end()
         return *this;
@@ -850,9 +615,6 @@ public:
 
     bool operator!=(const iterator& it) const { return !(*this == it); }
 
-    // Here's the info we actually need to be an iterator
-    // These need to be public so we convert from iterator to const_iterator
-    // ---------------------------------------------------------------------
     row_it row_current;
     col_it col_current;
 };
@@ -874,20 +636,16 @@ public:
         if (this->row_current && !this->row_current->is_marked())
         {
             this->col_current = this->row_current->ne_begin();
-            advance_past_end();                 // in case cur->begin() == cur->end()
+            advance_past_end();                
         }
     }
 
-    // Arithmetic: we just do arithmetic on pos.  We don't even need to
-    // do bounds checking, since STL doesn't consider that its job.  :-)
-    // NOTE: this is not amortized constant time!  What do we do about it?
-    // ------------------------------------------------------------------
     void advance_past_end()
     {
         // used when col_current points to end()
         while (this->col_current == this->row_current->ne_end())
         {
-            this->row_current->clear(_alloc, true);  // This is what differs from non-destructive iterators above
+            this->row_current->clear(_alloc, true);  
 
             // end of current row
             // ------------------
@@ -922,7 +680,7 @@ static inline bool spp_popcount_check()
     int cpuInfo[4] = { -1 };
     spp_cpuid(cpuInfo, 1);
     if (cpuInfo[2] & (1 << 23))
-        return true;   // means SPP_POPCNT supported
+        return true;   
     return false;
 }
 #endif
@@ -969,28 +727,7 @@ static inline uint32_t spp_popcount(uint64_t i)
 
 #endif
 
-// ---------------------------------------------------------------------------
-// SPARSE-TABLE
-// ------------
-// The idea is that a table with (logically) t buckets is divided
-// into t/M *groups* of M buckets each.  (M is a constant, typically
-// 32)  Each group is stored sparsely.
-// Thus, inserting into the table causes some array to grow, which is
-// slow but still constant time.  Lookup involves doing a
-// logical-position-to-sparse-position lookup, which is also slow but
-// constant time.  The larger M is, the slower these operations are
-// but the less overhead (slightly).
-//
-// To store the sparse array, we store a bitmap B, where B[i] = 1 iff
-// bucket i is non-empty.  Then to look up bucket i we really look up
-// array[# of 1s before i in B].  This is constant time for fixed M.
-//
-// Terminology: the position of an item in the overall table (from
-// 1 .. t) is called its "location."  The logical position in a group
-// (from 1 .. M) is called its "position."  The actual location in
-// the array (from 1 .. # of non-empty buckets in the group) is
-// called its "offset."
-// ---------------------------------------------------------------------------
+
 
 template <class T, class Alloc>
 class sparsegroup
@@ -1006,16 +743,11 @@ public:
 
     typedef uint8_t                                        size_type;        // max # of buckets
 
-    // These are our special iterators, that go over non-empty buckets in a
-    // group.  These aren't const-only because you can change non-empty bcks.
-    // ---------------------------------------------------------------------
     typedef pointer                                        ne_iterator;
     typedef const_pointer                                  const_ne_iterator;
     typedef std::reverse_iterator<ne_iterator>             reverse_ne_iterator;
     typedef std::reverse_iterator<const_ne_iterator>       const_reverse_ne_iterator;
 
-    // We'll have versions for our special non-empty iterator too
-    // ----------------------------------------------------------
     ne_iterator               ne_begin()         { return reinterpret_cast<pointer>(_group); }
     const_ne_iterator         ne_begin() const   { return reinterpret_cast<pointer>(_group); }
     const_ne_iterator         ne_cbegin() const  { return reinterpret_cast<pointer>(_group); }
@@ -1030,8 +762,6 @@ public:
     const_reverse_ne_iterator ne_crend() const   { return const_reverse_ne_iterator(ne_cbegin());  }
 
 private:
-    // T can be std::pair<const K, V>, but sometime we need to cast to a mutable type
-    // ------------------------------------------------------------------------------
     typedef typename spp_::cvt<T>::type                    mutable_value_type;
     typedef mutable_value_type &                           mutable_reference;
     typedef mutable_value_type *                           mutable_pointer;
@@ -1052,8 +782,6 @@ private:
     static uint32_t _sizing(uint32_t n)
     {
 #if !defined(SPP_ALLOC_SZ) || (SPP_ALLOC_SZ == 0)
-        // aggressive allocation first, then decreasing as sparsegroups fill up
-        // --------------------------------------------------------------------
         struct alloc_batch_size
         {
             // 32 bit bitmap
@@ -1086,12 +814,8 @@ private:
         return n ? static_cast<uint32_t>(s_alloc_batch_sz.data[n-1]) : 0; // more aggressive alloc at the beginning
 
 #elif (SPP_ALLOC_SZ == 1)
-        // use as little memory as possible - slowest insert/delete in table
-        // -----------------------------------------------------------------
         return n;
 #else
-        // decent compromise when SPP_ALLOC_SZ == 2
-        // ----------------------------------------
         static size_type sz_minus_1 = SPP_ALLOC_SZ - 1;
         return (n + sz_minus_1) & ~sz_minus_1;
 #endif
@@ -1099,15 +823,12 @@ private:
 
     pointer _allocate_group(allocator_type &alloc, uint32_t n /* , bool tight = false */)
     {
-        // ignore tight since we don't store num_alloc
-        // num_alloc = (uint8_t)(tight ? n : _sizing(n));
 
         uint32_t num_alloc = (uint8_t)_sizing(n);
         _set_num_alloc(num_alloc);
         pointer retval = alloc.allocate(static_cast<size_type>(num_alloc));
         if (retval == NULL)
         {
-            // the allocator is supposed to throw an exception if the allocation fails.
             throw_exception(std::bad_alloc());
         }
         return retval;
@@ -1129,19 +850,15 @@ private:
         }
     }
 
-    // private because should not be called - no allocator!
     sparsegroup &operator=(const sparsegroup& x);
 
     static size_type _pos_to_offset(group_bm_type bm, size_type pos)
     {
-        //return (size_type)((uint32_t)~((int32_t(-1) + pos) >> 31) & spp_popcount(bm << (SPP_GROUP_SIZE - pos)));
-        //return (size_type)(pos ? spp_popcount(bm << (SPP_GROUP_SIZE - pos)) : 0);
         return static_cast<size_type>(spp_popcount(bm & ((static_cast<group_bm_type>(1) << pos) - 1)));
     }
 
 public:
 
-    // get_iter() in sparsetable needs it
     size_type pos_to_offset(size_type pos) const
     {
         return _pos_to_offset(_bitmap, pos);
@@ -1152,21 +869,11 @@ public:
 #pragma warning(disable : 4146)
 #endif
 
-    // Returns the (logical) position in the bm[] array, i, such that
-    // bm[i] is the offset-th set bit in the array.  It is the inverse
-    // of pos_to_offset.  get_pos() uses this function to find the index
-    // of an ne_iterator in the table.  Bit-twiddling from
-    // http://hackersdelight.org/basics.pdf
-    // -----------------------------------------------------------------
+
     static size_type offset_to_pos(group_bm_type bm, size_type offset)
     {
         for (; offset > 0; offset--)
-            bm &= (bm-1);  // remove right-most set bit
-
-        // Clear all bits to the left of the rightmost bit (the &),
-        // and then clear the rightmost bit but set all bits to the
-        // right of it (the -1).
-        // --------------------------------------------------------
+            bm &= (bm-1);  
         bm = (bm & -bm) - 1;
         return  static_cast<size_type>(spp_popcount(bm));
     }
@@ -1181,7 +888,6 @@ public:
     }
 
 public:
-    // Constructors -- default and copy -- and destructor
     explicit sparsegroup() :
         _group(0), _bitmap(0), _bm_erased(0)
     {
@@ -1230,7 +936,6 @@ public:
 #endif
     }
 
-    // It's always nice to be able to clear a table without deallocating it
     void clear(allocator_type &alloc, bool erased)
     {
         _free_group(alloc, _num_alloc());
@@ -1241,19 +946,13 @@ public:
         _set_num_alloc(0);
     }
 
-    // Functions that tell you about size.  Alas, these aren't so useful
-    // because our table is always fixed size.
     size_type size() const           { return static_cast<size_type>(SPP_GROUP_SIZE); }
     size_type max_size() const       { return static_cast<size_type>(SPP_GROUP_SIZE); }
 
     bool empty() const               { return false; }
 
-    // We also may want to know how many *used* buckets there are
     size_type num_nonempty() const   { return (size_type)_num_items(); }
 
-    // TODO(csilvers): make protected + friend
-    // This is used by sparse_hashtable to get an element from the table
-    // when we know it exists.
     reference unsafe_get(size_type i) const
     {
         // assert(_bmtest(i));
@@ -1263,14 +962,9 @@ public:
     typedef std::pair<pointer, bool> SetResult;
 
 private:
-    //typedef spp_::integral_constant<bool, spp_::is_relocatable<value_type>::value> check_relocatable;
     typedef spp_::true_type  realloc_ok_type;
     typedef spp_::false_type realloc_not_ok_type;
 
-    //typedef spp_::zero_type  libc_reloc_type;
-    //typedef spp_::one_type   spp_reloc_type;
-    //typedef spp_::two_type   spp_not_reloc_type;
-    //typedef spp_::three_type generic_alloc_type;
 
 #if 1
     typedef typename if_<((spp_::is_same<allocator_type, libc_allocator<value_type> >::value ||
@@ -1286,18 +980,6 @@ private:
 #endif
 
 
-    //typedef if_<spp_::is_same<allocator_type, libc_allocator<value_type> >::value,
-    //            libc_alloc_type,
-    //            if_<spp_::is_same<allocator_type, spp_allocator<value_type> >::value,
-    //                spp_alloc_type, user_alloc_type> > check_alloc_type;
-
-    //typedef spp_::integral_constant<bool,
-    //            (spp_::is_relocatable<value_type>::value &&
-    //             (spp_::is_same<allocator_type, spp_allocator<value_type> >::value ||
-    //              spp_::is_same<allocator_type, libc_allocator<value_type> >::value)) >
-    //        realloc_and_memmove_ok;
-
-    // ------------------------- memory at *p is uninitialized => need to construct
     void _init_val(mutable_value_type *p, reference val)
     {
 #if !defined(SPP_NO_CXX11_RVALUE_REFERENCES)
@@ -1307,13 +989,11 @@ private:
 #endif
     }
 
-    // ------------------------- memory at *p is uninitialized => need to construct
     void _init_val(mutable_value_type *p, const_reference val)
     {
         ::new (p) value_type(val);
     }
 
-    // ------------------------------------------------ memory at *p is initialized
     void _set_val(value_type *p, reference val)
     {
 #if !defined(SPP_NO_CXX11_RVALUE_REFERENCES)
@@ -1324,20 +1004,14 @@ private:
 #endif
     }
 
-    // ------------------------------------------------ memory at *p is initialized
     void _set_val(value_type *p, const_reference val)
     {
         *(mutable_pointer)p = *(const_mutable_pointer)&val;
     }
 
-    // Create space at _group[offset], assuming value_type is relocatable, and the 
-    // allocator_type is the spp allocator.
-    // return true if the slot was constructed (i.e. contains a valid value_type
-    // ---------------------------------------------------------------------------------
     template <class Val>
     void _set_aux(allocator_type &alloc, size_type offset, Val &val, realloc_ok_type)
     {
-        //static int x=0;  if (++x < 10) printf("x\n"); // check we are getting here
 
         uint32_t  num_items = _num_items();
         uint32_t  num_alloc = _sizing(num_items);
@@ -1355,10 +1029,6 @@ private:
         _init_val((mutable_pointer)(_group + offset), val);
     }
 
-    // Create space at _group[offset], assuming value_type is *not* relocatable, and the 
-    // allocator_type is the spp allocator.
-    // return true if the slot was constructed (i.e. contains a valid value_type
-    // ---------------------------------------------------------------------------------
     template <class Val>
     void _set_aux(allocator_type &alloc, size_type offset, Val &val, realloc_not_ok_type)
     {
@@ -1434,9 +1104,6 @@ public:
     }
 
 private:
-    // Shrink the array, assuming value_type is relocatable, and the 
-    // allocator_type is the libc allocator (supporting reallocate).
-    // -------------------------------------------------------------
     void _group_erase_aux(allocator_type &alloc, size_type offset, realloc_ok_type)
     {
         // static int x=0;  if (++x < 10) printf("Y\n"); // check we are getting here
@@ -1465,9 +1132,6 @@ private:
         }
     }
 
-    // Shrink the array, without any special assumptions about value_type and
-    // allocator_type.
-    // --------------------------------------------------------------------------
     void _group_erase_aux(allocator_type &alloc, size_type offset, realloc_not_ok_type)
     {
         uint32_t  num_items = _num_items();
@@ -1537,12 +1201,6 @@ public:
         return true;
     }
 
-
-    // This takes the specified elements out of the group.  This is
-    // "undefining", rather than "clearing".
-    // TODO(austern): Make this exception safe: handle exceptions from
-    // value_type's copy constructor.
-    // ---------------------------------------------------------------
     void erase(allocator_type &alloc, size_type i)
     {
         if (_bmtest(i))
@@ -1560,16 +1218,8 @@ public:
         }
     }
 
-    // I/O
-    // We support reading and writing groups to disk.  We don't store
-    // the actual array contents (which we don't know how to store),
-    // just the bitmap and size.  Meant to be used with table I/O.
-    // --------------------------------------------------------------
     template <typename OUTPUT> bool write_metadata(OUTPUT *fp) const
     {
-        // warning: we write 4 or 8 bytes for the bitmap, instead of 6 in the
-        //          original google sparsehash
-        // ------------------------------------------------------------------
         if (!sparsehash_internal::write_data(fp, &_bitmap, sizeof(_bitmap)))
             return false;
 
@@ -1584,8 +1234,6 @@ public:
         if (!sparsehash_internal::read_data(fp, &_bitmap, sizeof(_bitmap)))
             return false;
 
-        // We'll allocate the space, but we won't fill it: it will be
-        // left as uninitialized raw memory.
         uint32_t num_items = spp_popcount(_bitmap); // yes, _num_buckets not set
         _set_num_items(num_items);
         _group = num_items ? _allocate_group(alloc, num_items/* , true */) : 0;
@@ -1601,10 +1249,6 @@ public:
         return true;
     }
 
-    // If your keys and values are simple enough, we can write them
-    // to disk for you.  "simple enough" means POD and no pointers.
-    // However, we don't try to normalize endianness.
-    // ------------------------------------------------------------
     template <typename OUTPUT> bool write_nopointer_data(OUTPUT *fp) const
     {
         for (const_ne_iterator it = ne_begin(); it != ne_end(); ++it)
@@ -1614,12 +1258,6 @@ public:
     }
 
 
-    // Comparisons.  We only need to define == and < -- we get
-    // != > <= >= via relops.h (which we happily included above).
-    // Note the comparisons are pretty arbitrary: we compare
-    // values of the first index that isn't equal (using default
-    // value for empty buckets).
-    // ---------------------------------------------------------
     bool operator==(const sparsegroup& x) const
     {
         return (_bitmap == x._bitmap &&
@@ -1651,11 +1289,8 @@ private:
         typedef typename A::pointer pointer;
         typedef typename A::size_type size_type;
 
-        // Convert a normal allocator to one that has realloc_or_die()
         explicit alloc_impl(const A& a) : A(a) { }
 
-        // realloc_or_die should only be used when using the default
-        // allocator (spp::spp_allocator).
         pointer realloc_or_die(pointer /*ptr*/, size_type /*n*/)
         {
             throw_exception(std::runtime_error("realloc_or_die is only supported for spp::spp_allocator\n"));
@@ -1663,9 +1298,6 @@ private:
         }
     };
 
-    // A template specialization of alloc_impl for
-    // spp::libc_allocator that can handle realloc_or_die.
-    // -----------------------------------------------------------
     template <class A>
     class alloc_impl<spp_::libc_allocator<A> > : public spp_::libc_allocator<A>
     {
@@ -1682,16 +1314,12 @@ private:
             pointer retval = this->reallocate(ptr, n);
             if (retval == NULL) 
             {
-                // the allocator is supposed to throw an exception if the allocation fails.
                 throw_exception(std::bad_alloc());
             }
             return retval;
         }
     };
 
-    // A template specialization of alloc_impl for
-    // spp::spp_allocator that can handle realloc_or_die.
-    // -----------------------------------------------------------
     template <class A>
     class alloc_impl<spp_::spp_allocator<A> > : public spp_::spp_allocator<A>
     {
@@ -1708,7 +1336,6 @@ private:
             pointer retval = this->reallocate(ptr, n);
             if (retval == NULL) 
             {
-                // the allocator is supposed to throw an exception if the allocation fails.
                 throw_exception(std::bad_alloc());
             }
             return retval;
@@ -1779,9 +1406,6 @@ public:
     typedef std::reverse_iterator<const_iterator>         const_reverse_iterator;
     typedef std::reverse_iterator<iterator>               reverse_iterator;
 
-    // These are our special iterators, that go over non-empty buckets in a
-    // table.  These aren't const only because you can change non-empty bcks.
-    // ----------------------------------------------------------------------
     typedef Two_d_iterator<T,
                            group_type *,
                            ColIterator,
@@ -1792,9 +1416,6 @@ public:
                            ColConstIterator,
                            std::bidirectional_iterator_tag> const_ne_iterator;
 
-    // Another special iterator: it frees memory as it iterates (used to resize).
-    // Obviously, you can only iterate over it once, which is why it's an input iterator
-    // ---------------------------------------------------------------------------------
     typedef Two_d_destructive_iterator<T,
                                        group_type *,
                                        ColIterator,
@@ -1805,8 +1426,6 @@ public:
     typedef std::reverse_iterator<const_ne_iterator>         const_reverse_ne_iterator;
 
 
-    // Iterator functions
-    // ------------------
     iterator               begin()         { return iterator(this, 0); }
     const_iterator         begin() const   { return const_iterator(this, 0); }
     const_iterator         cbegin() const  { return const_iterator(this, 0); }
@@ -1931,8 +1550,8 @@ public:
     {
         _table_size = o._table_size;
         _num_buckets = o._num_buckets;
-        _alloc = o._alloc;                // todo - copy or move allocator according to...
-        _group_alloc = o._group_alloc;    // http://en.cppreference.com/w/cpp/container/unordered_map/unordered_map
+        _alloc = o._alloc;              
+        _group_alloc = o._group_alloc;    
 
         group_size_type sz = (group_size_type)(o._last_group - o._first_group);
         if (sz)
@@ -1944,7 +1563,6 @@ public:
     }
 
 public:
-    // Constructors -- default, normal (when you specify size), and copy
     explicit sparsetable(size_type sz = 0, const allocator_type &alloc = allocator_type()) :
         _first_group(0),
         _last_group(0),
@@ -1952,8 +1570,6 @@ public:
         _num_buckets(0),
         _group_alloc(alloc),
         _alloc(alloc)
-                       // todo - copy or move allocator according to
-                       // http://en.cppreference.com/w/cpp/container/unordered_map/unordered_map
     {
         _allocate_groups(num_groups(sz));
     }
@@ -2028,11 +1644,6 @@ public:
     }
 
 
-    // Functions that tell you about size.
-    // NOTE: empty() is non-intuitive!  It does not tell you the number
-    // of not-empty buckets (use num_nonempty() for that).  Instead
-    // it says whether you've allocated any buckets or not.
-    // ----------------------------------------------------------------
     size_type size() const           { return _table_size; }
     size_type max_size() const       { return _alloc.max_size(); }
     bool empty() const               { return _table_size == 0; }
@@ -2068,9 +1679,6 @@ public:
             _last_group  = last;
         }
 #if 0
-        // used only in test program
-        // todo: fix if sparsetable to be used directly
-        // --------------------------------------------
         if (new_size < _table_size)
         {
             // lower num_buckets, clear last group
@@ -2085,8 +1693,6 @@ public:
         _table_size = new_size;
     }
 
-    // We let you see if a bucket is non-empty without retrieving it
-    // -------------------------------------------------------------
     bool test(size_type i) const
     {
         // assert(i < _table_size);
@@ -2141,10 +1747,6 @@ public:
         return which_group(pos.pos).test(pos_in_group(pos.pos));
     }
 
-    // TODO(csilvers): make protected + friend
-    // This is used by sparse_hashtable to get an element from the table
-    // when we know it exists (because the caller has called test(i)).
-    // -----------------------------------------------------------------
     reference unsafe_get(size_type i) const
     {
         assert(i < _table_size);
@@ -2152,10 +1754,8 @@ public:
         return which_group(i).unsafe_get(pos_in_group(i));
     }
 
-    // Needed for hashtables, gets as a ne_iterator.  Crashes for empty bcks
     const_ne_iterator get_iter(size_type i) const
     {
-        //assert(test(i));    // how can a ne_iterator point to an empty bucket?
 
         size_type grp_idx = group_num(i);
 
@@ -2172,7 +1772,6 @@ public:
     // For nonempty we can return a non-const version
     ne_iterator get_iter(size_type i)
     {
-        //assert(test(i));    // how can a nonempty_iterator point to an empty bucket?
 
         size_type grp_idx = group_num(i);
 
@@ -2195,7 +1794,6 @@ public:
                 _first_group[current_row].offset_to_pos(current_col));
     }
 
-    // Val can be reference or const_reference
     // ---------------------------------------
     template <class Val>
     reference set(size_type i, Val &val)
@@ -2208,7 +1806,6 @@ public:
         return *p;
     }
 
-    // used in _move_from (where we can move the old value instead of copying it
     void move(size_type i, reference val)
     {
         assert(i < _table_size);
@@ -2216,8 +1813,6 @@ public:
         ++_num_buckets;
     }
 
-    // This takes the specified elements out of the table.
-    // --------------------------------------------------
     void erase(size_type i)
     {
         assert(i < _table_size);
@@ -2235,8 +1830,6 @@ public:
 
     void erase(iterator start_it, iterator end_it)
     {
-        // This could be more efficient, but then we'd need to figure
-        // out if we spanned groups or not.  Doesn't seem worth it.
         for (; start_it != end_it; ++start_it)
             erase(start_it);
     }
@@ -2257,22 +1850,10 @@ public:
         return f;
     }
 
-    // We support reading and writing tables to disk.  We don't store
-    // the actual array contents (which we don't know how to store),
-    // just the groups and sizes.  Returns true if all went ok.
-
 private:
-    // Every time the disk format changes, this should probably change too
     typedef unsigned long MagicNumberType;
     static const MagicNumberType MAGIC_NUMBER = 0x24687531;
 
-    // Old versions of this code write all data in 32 bits.  We need to
-    // support these files as well as having support for 64-bit systems.
-    // So we use the following encoding scheme: for values < 2^32-1, we
-    // store in 4 bytes in big-endian order.  For values > 2^32, we
-    // store 0xFFFFFFF followed by 8 bytes in big-endian order.  This
-    // causes us to mis-read old-version code that stores exactly
-    // 0xFFFFFFF, but I don't think that is likely to have happened for
     // these particular values.
     template <typename OUTPUT, typename IntType>
     static bool write_32_or_64(OUTPUT* fp, IntType value)
@@ -2313,8 +1894,6 @@ private:
     }
 
 public:
-    // read/write_metadata() and read_write/nopointer_data() are DEPRECATED.
-    // Use serialize() and unserialize(), below, for new code.
 
     template <typename OUTPUT>
     bool write_metadata(OUTPUT *fp) const
@@ -2351,10 +1930,6 @@ public:
         return true;
     }
 
-    // This code is identical to that for SparseGroup
-    // If your keys and values are simple enough, we can write them
-    // to disk for you.  "simple enough" means no pointers.
-    // However, we don't try to normalize endianness
     bool write_nopointer_data(FILE *fp) const
     {
         for (const_ne_iterator it = ne_begin(); it != ne_end(); ++it)
@@ -2372,11 +1947,6 @@ public:
         return true;
     }
 
-    // INPUT and OUTPUT must be either a FILE, *or* a C++ stream
-    //    (istream, ostream, etc) *or* a class providing
-    //    Read(void*, size_t) and Write(const void*, size_t)
-    //    (respectively), which writes a buffer into a stream
-    //    (which the INPUT/OUTPUT instance presumably owns).
 
     typedef sparsehash_internal::pod_serializer<value_type> NopointerSerializer;
 
@@ -2405,9 +1975,6 @@ public:
         return true;
     }
 
-    // Comparisons.  Note the comparisons are pretty arbitrary: we
-    // compare values of the first index that isn't equal (using default
-    // value for empty buckets).
     bool operator==(const sparsetable& x) const
     {
         return (_table_size == x._table_size &&
@@ -2436,30 +2003,7 @@ private:
     allocator_type   _alloc;
 };
 
-//  ----------------------------------------------------------------------
-//                  S P A R S E _ H A S H T A B L E
-//  ----------------------------------------------------------------------
-// Hashtable class, used to implement the hashed associative containers
-// hash_set and hash_map.
-//
-// Value: what is stored in the table (each bucket is a Value).
-// Key: something in a 1-to-1 correspondence to a Value, that can be used
-//      to search for a Value in the table (find() takes a Key).
-// HashFcn: Takes a Key and returns an integer, the more unique the better.
-// ExtractKey: given a Value, returns the unique Key associated with it.
-//             Must inherit from unary_function, or at least have a
-//             result_type enum indicating the return type of operator().
-// EqualKey: Given two Keys, says whether they are the same (that is,
-//           if they are both associated with the same Value).
-// Alloc: STL allocator to use to allocate memory.
-//
-//  ----------------------------------------------------------------------
 
-// The probing method
-// ------------------
-// Linear probing
-// #define JUMP_(key, num_probes)    ( 1 )
-// Quadratic probing
 #define JUMP_(key, num_probes)    ( num_probes )
 
 
@@ -2503,23 +2047,10 @@ public:
     // ----------------------------------------------
     static const int HT_OCCUPANCY_PCT; // = 80 (out of 100);
 
-    // How empty we let the table get before we resize lower, by default.
-    // (0.0 means never resize lower.)
-    // It should be less than OCCUPANCY_PCT / 2 or we thrash resizing
-    // ------------------------------------------------------------------
     static const int HT_EMPTY_PCT; // = 0.4 * HT_OCCUPANCY_PCT;
 
-    // Minimum size we're willing to let hashtables be.
-    // Must be a power of two, and at least 4.
-    // Note, however, that for a given hashtable, the initial size is a
-    // function of the first constructor arg, and may be >HT_MIN_BUCKETS.
-    // ------------------------------------------------------------------
     static const size_type HT_MIN_BUCKETS = 4;
 
-    // By default, if you don't specify a hashtable size at
-    // construction-time, we use this size.  Must be a power of two, and
-    // at least HT_MIN_BUCKETS.
-    // -----------------------------------------------------------------
     static const size_type HT_DEFAULT_STARTING_BUCKETS = 32;
 
     // iterators
@@ -2531,12 +2062,6 @@ public:
     const_iterator cbegin() const { return _mk_const_iterator(table.ne_cbegin()); }
     const_iterator cend() const   { return _mk_const_iterator(table.ne_cend());   }
 
-    // These come from tr1 unordered_map.  They iterate over 'bucket' n.
-    // For sparsehashtable, we could consider each 'group' to be a bucket,
-    // I guess, but I don't really see the point.  We'll just consider
-    // bucket n to be the n-th element of the sparsetable, if it's occupied,
-    // or some empty element, otherwise.
-    // ---------------------------------------------------------------------
     local_iterator begin(size_type i)
     {
         return _mk_iterator(table.test(i) ? table.get_iter(i) : table.ne_end());
@@ -2582,11 +2107,6 @@ public:
     unsigned int num_table_copies() const { return settings.num_ht_copies(); }
 
 private:
-    // This is used as a tag for the copy constructor, saying to destroy its
-    // arg We have two ways of destructively copying: with potentially growing
-    // the hashtable as we copy, and without.  To make sure the outside world
-    // can't do a destructive copy, we make the typename private.
-    // -----------------------------------------------------------------------
     enum MoveDontCopyT {MoveDontCopy, MoveDontGrow};
 
     // creating iterators from sparsetable::ne_iterators
@@ -2601,34 +2121,20 @@ public:
     bool empty() const                  { return size() == 0; }
     size_type bucket_count() const      { return table.size(); }
     size_type max_bucket_count() const  { return max_size(); }
-    // These are tr1 methods.  Their idea of 'bucket' doesn't map well to
-    // what we do.  We just say every bucket has 0 or 1 items in it.
     size_type bucket_size(size_type i) const
     {
         return (size_type)(begin(i) == end(i) ? 0 : 1);
     }
 
 private:
-    // Because of the above, size_type(-1) is never legal; use it for errors
-    // ---------------------------------------------------------------------
     static const size_type ILLEGAL_BUCKET = size_type(-1);
 
-    // Used after a string of deletes.  Returns true if we actually shrunk.
-    // TODO(csilvers): take a delta so we can take into account inserts
-    // done after shrinking.  Maybe make part of the Settings class?
-    // --------------------------------------------------------------------
     bool _maybe_shrink()
     {
         assert((bucket_count() & (bucket_count()-1)) == 0); // is a power of two
         assert(bucket_count() >= HT_MIN_BUCKETS);
         bool retval = false;
 
-        // If you construct a hashtable with < HT_DEFAULT_STARTING_BUCKETS,
-        // we'll never shrink until you get relatively big, and we'll never
-        // shrink below HT_DEFAULT_STARTING_BUCKETS.  Otherwise, something
-        // like "dense_hash_set<int> x; x.insert(4); x.erase(4);" will
-        // shrink us down to HT_MIN_BUCKETS buckets, which is too small.
-        // ---------------------------------------------------------------
         const size_type num_remain = table.num_nonempty();
         const size_type shrink_threshold = settings.shrink_threshold();
         if (shrink_threshold > 0 && num_remain < shrink_threshold &&
@@ -2649,10 +2155,6 @@ private:
         return retval;
     }
 
-    // We'll let you resize a hashtable -- though this makes us copy all!
-    // When you resize, you say, "make it big enough for this many more elements"
-    // Returns true if we actually resized, false if size was already ok.
-    // --------------------------------------------------------------------------
     bool _resize_delta(size_type delta)
     {
         bool did_resize = false;
@@ -2674,11 +2176,6 @@ private:
              (num_occupied + delta) <= settings.enlarge_threshold())
             return did_resize;                       // we're ok as we are
 
-        // Sometimes, we need to resize just to get rid of all the
-        // "deleted" buckets that are clogging up the hashtable.  So when
-        // deciding whether to resize, count the deleted buckets (which
-        // are currently taking up room).
-        // -------------------------------------------------------------
         const size_type needed_size =
                   settings.min_buckets((size_type)(num_occupied + delta), (size_type)0);
 
@@ -2690,18 +2187,10 @@ private:
         if (resize_to < needed_size &&    // may double resize_to
             resize_to < (std::numeric_limits<size_type>::max)() / 2)
         {
-            // This situation means that we have enough deleted elements,
-            // that once we purge them, we won't actually have needed to
-            // grow.  But we may want to grow anyway: if we just purge one
-            // element, say, we'll have to grow anyway next time we
-            // insert.  Might as well grow now, since we're already going
-            // through the trouble of copying (in order to purge the
-            // deleted elements).
             const size_type target =
                 static_cast<size_type>(settings.shrink_size((size_type)(resize_to*2)));
             if (table.num_nonempty() + delta >= target)
             {
-                // Good, we won't be below the shrink threshhold even if we double.
                 resize_to *= 2;
             }
         }
@@ -2711,13 +2200,9 @@ private:
         return true;
     }
 
-    // Used to actually do the rehashing when we grow/shrink a hashtable
-    // -----------------------------------------------------------------
     void _copy_from(const sparse_hashtable &ht, size_type min_buckets_wanted)
     {
-        clear();            // clear table, set num_deleted to 0
-
-        // If we need to change the size of our table, do it now
+        clear();          
         const size_type resize_to = settings.min_buckets(ht.size(), min_buckets_wanted);
 
         if (resize_to > bucket_count())
@@ -2727,9 +2212,7 @@ private:
             settings.reset_thresholds(bucket_count());
         }
 
-        // We use a normal iterator to get bcks from ht
-        // We could use insert() here, but since we know there are
-        // no duplicates, we can be more efficient
+     
         assert((bucket_count() & (bucket_count()-1)) == 0);      // a power of two
         for (const_iterator it = ht.begin(); it != ht.end(); ++it)
         {
@@ -2749,10 +2232,6 @@ private:
         settings.inc_num_ht_copies();
     }
 
-    // Implementation is like _copy_from, but it destroys the table of the
-    // "from" guy by freeing sparsetable memory as we iterate.  This is
-    // useful in resizing, since we're throwing away the "from" guy anyway.
-    // --------------------------------------------------------------------
     void _move_from(MoveDontCopyT mover, sparse_hashtable &ht,
                    size_type min_buckets_wanted)
     {
@@ -2771,9 +2250,6 @@ private:
             settings.reset_thresholds(bucket_count());
         }
 
-        // We use a normal iterator to get bcks from ht
-        // We could use insert() here, but since we know there are
-        // no duplicates, we can be more efficient
         assert((bucket_count() & (bucket_count()-1)) == 0);      // a power of two
         const size_type bucket_count_minus_one = (const size_type)(bucket_count() - 1);
 
@@ -2799,10 +2275,6 @@ private:
 
     // Required by the spec for hashed associative container
 public:
-    // Though the docs say this should be num_buckets, I think it's much
-    // more useful as num_elements.  As a special feature, calling with
-    // req_elements==0 will cause us to shrink if we can, saving space.
-    // -----------------------------------------------------------------
     void resize(size_type req_elements)
     {
         // resize to this or larger
@@ -2812,11 +2284,6 @@ public:
             _resize_delta((size_type)(req_elements - table.num_nonempty()));
     }
 
-    // Get and change the value of shrink_factor and enlarge_factor.  The
-    // description at the beginning of this file explains how to choose
-    // the values.  Setting the shrink parameter to 0.0 ensures that the
-    // table never shrinks.
-    // ------------------------------------------------------------------
     void get_resizing_parameters(float* shrink, float* grow) const
     {
         *shrink = settings.shrink_factor();
@@ -2842,11 +2309,6 @@ public:
         set_resizing_parameters(get_shrink_factor(), grow);
     }
 
-    // CONSTRUCTORS -- as required by the specs, we take a size,
-    // but also let you specify a hashfunction, key comparator,
-    // and key extractor.  We also define a copy constructor and =.
-    // DESTRUCTOR -- the default is fine, surprisingly.
-    // ------------------------------------------------------------
     explicit sparse_hashtable(size_type expected_max_items_in_table = 0,
                               const HashFcn& hf = HashFcn(),
                               const EqualKey& eql = EqualKey(),
@@ -2864,11 +2326,6 @@ public:
         settings.reset_thresholds(bucket_count());
     }
 
-    // As a convenience for resize(), we allow an optional second argument
-    // which lets you make this new hashtable a different size than ht.
-    // We also provide a mechanism of saying you want to "move" the ht argument
-    // into us instead of copying.
-    // ------------------------------------------------------------------------
     sparse_hashtable(const sparse_hashtable& ht,
                      size_type min_buckets_wanted = HT_DEFAULT_STARTING_BUCKETS)
         : settings(ht.settings),
@@ -2927,7 +2384,6 @@ public:
         return *this;
     }
 
-    // Many STL algorithms use swap instead of copy constructors
     void swap(sparse_hashtable& ht)
     {
         using std::swap;
@@ -2969,12 +2425,6 @@ private:
         size_type _idx;
     };
 
-    // Returns a pair:
-    //   - 'first' is a code, 2 if key already present, 0 or 1 otherwise.
-    //   - 'second' is a position, where the key should go
-    // Note: because of deletions where-to-insert is not trivial: it's the
-    // first deleted bucket we see, as long as we don't find the key later
-    // -------------------------------------------------------------------
     Position _find_position(const key_type &key) const
     {
         size_type num_probes = 0;                    // how many times we've probed
@@ -3015,9 +2465,6 @@ private:
     }
 
 public:
-    // I hate to duplicate find() like that, but it is
-    // significantly faster to not have the intermediate pair
-    // ------------------------------------------------------------------
     iterator find(const key_type& key)
     {
         size_type num_probes = 0;              // how many times we've probed
@@ -3044,8 +2491,6 @@ public:
         }
     }
 
-    // Wish I could avoid the duplicate find() const and non-const.
-    // ------------------------------------------------------------
     const_iterator find(const key_type& key) const
     {
         size_type num_probes = 0;              // how many times we've probed
@@ -3072,9 +2517,6 @@ public:
         }
     }
 
-    // This is a tr1 method: the bucket a given key is in, or what bucket
-    // it would be put in, if it were to be inserted.  Shrug.
-    // ------------------------------------------------------------------
     size_type bucket(const key_type& key) const
     {
         Position pos = _find_position(key);
@@ -3116,9 +2558,7 @@ public:
     }
 
 
-    // INSERTION ROUTINES
 private:
-    // Private method used by insert_noresize and find_or_insert.
     template <class T>
     reference _insert_at(T& obj, size_type pos, bool erased)
     {
@@ -3134,7 +2574,6 @@ private:
         return table.set(pos, obj);
     }
 
-    // If you know *this is big enough to hold obj, use this routine
     template <class T>
     std::pair<iterator, bool> _insert_noresize(T& obj)
     {
@@ -3149,8 +2588,6 @@ private:
         return std::pair<iterator,bool>(_mk_iterator(table.get_iter(pos._idx)), false);
     }
 
-    // Specializations of insert(it, it) depending on the power of the iterator:
-    // (1) Iterator supports operator-, resize before inserting
     template <class ForwardIterator>
     void _insert(ForwardIterator f, ForwardIterator l, std::forward_iterator_tag /*unused*/)
     {
@@ -3164,7 +2601,6 @@ private:
             _insert_noresize(*f);
     }
 
-    // (2) Arbitrary iterator, can't tell how much to resize
     template <class InputIterator>
     void _insert(InputIterator f, InputIterator l, std::input_iterator_tag /*unused*/)
     {
@@ -3184,7 +2620,6 @@ public:
     }
 #endif
 
-    // This is the normal insert routine, used by the outside world
     std::pair<iterator, bool> insert(const_reference obj)
     {
         _resize_delta(1);                      // adding an object, grow if need be
@@ -3201,7 +2636,6 @@ public:
     }
 #endif
 
-    // When inserting a lot at a time, we specialize on the type of iterator
     template <class InputIterator>
     void insert(InputIterator f, InputIterator l)
     {
@@ -3210,8 +2644,6 @@ public:
                typename std::iterator_traits<InputIterator>::iterator_category());
     }
 
-    // DefaultValue is a functor that takes a key and returns a value_type
-    // representing the default value to be inserted if none is found.
 #if !defined(SPP_NO_CXX11_VARIADIC_TEMPLATES)
     template <class DefaultValue, class KT>
     value_type& find_or_insert(KT&& key)
@@ -3241,8 +2673,6 @@ public:
 #endif                
                 if (_resize_delta(1))
                 {
-                    // needed to rehash to make room
-                    // Since we resized, we can't use pos, so recalculate where to insert.
                     return *(_insert_noresize(def).first);
                 }
                 else
@@ -3326,9 +2756,6 @@ public:
         return nextpos;
     }
 
-    // Deleted key routines - just to keep google test framework happy
-    // we don't actually use the deleted key
-    // ---------------------------------------------------------------
     void set_deleted_key(const key_type&)
     {
     }
@@ -3361,19 +2788,6 @@ public:
     }
 
 
-    // I/O
-    // We support reading and writing hashtables to disk.  NOTE that
-    // this only stores the hashtable metadata, not the stuff you've
-    // actually put in the hashtable!  Alas, since I don't know how to
-    // write a hasher or key_equal, you have to make sure everything
-    // but the table is the same.  We compact before writing.
-    //
-    // The OUTPUT type needs to support a Write() operation. File and
-    // OutputBuffer are appropriate types to pass in.
-    //
-    // The INPUT type needs to support a Read() operation. File and
-    // InputBuffer are appropriate types to pass in.
-    // -------------------------------------------------------------
     template <typename OUTPUT>
     bool write_metadata(OUTPUT *fp)
     {
@@ -3403,11 +2817,6 @@ public:
         return table.read_nopointer_data(fp);
     }
 
-    // INPUT and OUTPUT must be either a FILE, *or* a C++ stream
-    //    (istream, ostream, etc) *or* a class providing
-    //    Read(void*, size_t) and Write(const void*, size_t)
-    //    (respectively), which writes a buffer into a stream
-    //    (which the INPUT/OUTPUT instance presumably owns).
 
     typedef sparsehash_internal::pod_serializer<value_type> NopointerSerializer;
 
@@ -3430,11 +2839,6 @@ public:
 
 private:
 
-    // Package templated functors with the other types to eliminate memory
-    // needed for storing these zero-size operators.  Since ExtractKey and
-    // hasher's operator() might have the same function signature, they
-    // must be packaged in different classes.
-    // -------------------------------------------------------------------------
     struct Settings :
         sparsehash_internal::sh_hashtable_settings<key_type, hasher,
                                                    size_type, HT_MIN_BUCKETS>
@@ -3445,9 +2849,6 @@ private:
               (hf, HT_OCCUPANCY_PCT / 100.0f, HT_EMPTY_PCT / 100.0f) {}
     };
 
-    // KeyInfo stores delete key and packages zero-size functors:
-    // ExtractKey and SetKey.
-     // ---------------------------------------------------------
     class KeyInfo : public ExtractKey, public SetKey, public EqualKey
     {
     public:
@@ -3468,7 +2869,6 @@ private:
         }
     };
 
-    // Utility functions to access the templated operators
     size_t hash(const key_type& v) const
     {
         return settings.hash(v);
@@ -3500,24 +2900,15 @@ template <class V, class K, class HF, class ExK, class SetK, class EqK, class A>
 const typename sparse_hashtable<V,K,HF,ExK,SetK,EqK,A>::size_type
 sparse_hashtable<V,K,HF,ExK,SetK,EqK,A>::ILLEGAL_BUCKET;
 
-// How full we let the table get before we resize.  Knuth says .8 is
-// good -- higher causes us to probe too much, though saves memory
-// -----------------------------------------------------------------------------
 template <class V, class K, class HF, class ExK, class SetK, class EqK, class A>
 const int sparse_hashtable<V,K,HF,ExK,SetK,EqK,A>::HT_OCCUPANCY_PCT = 50;
 
-// How empty we let the table get before we resize lower.
-// It should be less than OCCUPANCY_PCT / 2 or we thrash resizing
-// -----------------------------------------------------------------------------
 template <class V, class K, class HF, class ExK, class SetK, class EqK, class A>
 const int sparse_hashtable<V,K,HF,ExK,SetK,EqK,A>::HT_EMPTY_PCT
 = static_cast<int>(0.4 *
                    sparse_hashtable<V,K,HF,ExK,SetK,EqK,A>::HT_OCCUPANCY_PCT);
 
 
-//  ----------------------------------------------------------------------
-//                   S P A R S E _ H A S H _ M A P
-//  ----------------------------------------------------------------------
 template <class Key, class T,
           class HashFcn  = spp_hash<Key>,
           class EqualKey = std::equal_to<Key>,
@@ -3835,9 +3226,6 @@ public:
     iterator insert(iterator /*unused*/, const value_type& obj) { return insert(obj).first; }
     iterator insert(const_iterator /*unused*/, const value_type& obj) { return insert(obj).first; }
 
-    // Deleted key routines - just to keep google test framework happy
-    // we don't actually use the deleted key
-    // ---------------------------------------------------------------
     void set_deleted_key(const key_type& key)   { rep.set_deleted_key(key); }
     void clear_deleted_key()                    { rep.clear_deleted_key();  }
     key_type deleted_key() const                { return rep.deleted_key(); }
@@ -3856,49 +3244,16 @@ public:
     bool operator!=(const sparse_hash_map& hs) const   { return rep != hs.rep; }
 
 
-    // I/O -- this is an add-on for writing metainformation to disk
-    //
-    // For maximum flexibility, this does not assume a particular
-    // file type (though it will probably be a FILE *).  We just pass
-    // the fp through to rep.
 
-    // If your keys and values are simple enough, you can pass this
-    // serializer to serialize()/unserialize().  "Simple enough" means
-    // value_type is a POD type that contains no pointers.  Note,
-    // however, we don't try to normalize endianness.
-    // ---------------------------------------------------------------
     typedef typename ht::NopointerSerializer NopointerSerializer;
 
-    // serializer: a class providing operator()(OUTPUT*, const value_type&)
-    //    (writing value_type to OUTPUT).  You can specify a
-    //    NopointerSerializer object if appropriate (see above).
-    // fp: either a FILE*, OR an ostream*/subclass_of_ostream*, OR a
-    //    pointer to a class providing size_t Write(const void*, size_t),
-    //    which writes a buffer into a stream (which fp presumably
-    //    owns) and returns the number of bytes successfully written.
-    //    Note basic_ostream<not_char> is not currently supported.
-    // ---------------------------------------------------------------
+
     template <typename ValueSerializer, typename OUTPUT>
     bool serialize(ValueSerializer serializer, OUTPUT* fp)
     {
         return rep.serialize(serializer, fp);
     }
 
-    // serializer: a functor providing operator()(INPUT*, value_type*)
-    //    (reading from INPUT and into value_type).  You can specify a
-    //    NopointerSerializer object if appropriate (see above).
-    // fp: either a FILE*, OR an istream*/subclass_of_istream*, OR a
-    //    pointer to a class providing size_t Read(void*, size_t),
-    //    which reads into a buffer from a stream (which fp presumably
-    //    owns) and returns the number of bytes successfully read.
-    //    Note basic_istream<not_char> is not currently supported.
-    // NOTE: Since value_type is std::pair<const Key, T>, ValueSerializer
-    // may need to do a const cast in order to fill in the key.
-    // NOTE: if Key or T are not POD types, the serializer MUST use
-    // placement-new to initialize their values, rather than a normal
-    // equals-assignment or similar.  (The value_type* passed into the
-    // serializer points to garbage memory.)
-    // ---------------------------------------------------------------
     template <typename ValueSerializer, typename INPUT>
     bool unserialize(ValueSerializer serializer, INPUT* fp)
     {
@@ -3922,14 +3277,11 @@ public:
 
 
 private:
-    // The actual data
-    // ---------------
+
     ht rep;
 };
 
-//  ----------------------------------------------------------------------
-//                   S P A R S E _ H A S H _ S E T
-//  ----------------------------------------------------------------------
+
 
 template <class Value,
           class HashFcn  = spp_hash<Value>,
@@ -3938,7 +3290,6 @@ template <class Value,
 class sparse_hash_set
 {
 private:
-    // Apparently identity is not stl-standard, so we define our own
     struct Identity
     {
         typedef const Value& result_type;
@@ -4209,50 +3560,16 @@ public:
     bool operator==(const sparse_hash_set& hs) const { return rep == hs.rep; }
     bool operator!=(const sparse_hash_set& hs) const { return rep != hs.rep; }
 
-
-    // I/O -- this is an add-on for writing metainformation to disk
-    //
-    // For maximum flexibility, this does not assume a particular
-    // file type (though it will probably be a FILE *).  We just pass
-    // the fp through to rep.
-
-    // If your keys and values are simple enough, you can pass this
-    // serializer to serialize()/unserialize().  "Simple enough" means
-    // value_type is a POD type that contains no pointers.  Note,
-    // however, we don't try to normalize endianness.
-    // ---------------------------------------------------------------
     typedef typename ht::NopointerSerializer NopointerSerializer;
 
-    // serializer: a class providing operator()(OUTPUT*, const value_type&)
-    //    (writing value_type to OUTPUT).  You can specify a
-    //    NopointerSerializer object if appropriate (see above).
-    // fp: either a FILE*, OR an ostream*/subclass_of_ostream*, OR a
-    //    pointer to a class providing size_t Write(const void*, size_t),
-    //    which writes a buffer into a stream (which fp presumably
-    //    owns) and returns the number of bytes successfully written.
-    //    Note basic_ostream<not_char> is not currently supported.
-    // ---------------------------------------------------------------
+
     template <typename ValueSerializer, typename OUTPUT>
     bool serialize(ValueSerializer serializer, OUTPUT* fp)
     {
         return rep.serialize(serializer, fp);
     }
 
-    // serializer: a functor providing operator()(INPUT*, value_type*)
-    //    (reading from INPUT and into value_type).  You can specify a
-    //    NopointerSerializer object if appropriate (see above).
-    // fp: either a FILE*, OR an istream*/subclass_of_istream*, OR a
-    //    pointer to a class providing size_t Read(void*, size_t),
-    //    which reads into a buffer from a stream (which fp presumably
-    //    owns) and returns the number of bytes successfully read.
-    //    Note basic_istream<not_char> is not currently supported.
-    // NOTE: Since value_type is const Key, ValueSerializer
-    // may need to do a const cast in order to fill in the key.
-    // NOTE: if Key is not a POD type, the serializer MUST use
-    // placement-new to initialize its value, rather than a normal
-    // equals-assignment or similar.  (The value_type* passed into
-    // the serializer points to garbage memory.)
-    // ---------------------------------------------------------------
+
     template <typename ValueSerializer, typename INPUT>
     bool unserialize(ValueSerializer serializer, INPUT* fp)
     {

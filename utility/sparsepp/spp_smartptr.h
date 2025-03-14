@@ -2,10 +2,6 @@
 #define spp_smartptr_h_guard
 
 
-/* -----------------------------------------------------------------------------------------------
- * quick version of intrusive_ptr
- * -----------------------------------------------------------------------------------------------
- */
 
 #include <cassert>
 #include "spp_config.h"
@@ -68,4 +64,4 @@ namespace std
     }
 }
 
-#endif // spp_smartptr_h_guard
+#endif 
